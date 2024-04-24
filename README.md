@@ -5,7 +5,7 @@ Comandos uteis para serem utilizados dentro do Cluster
 - Alocar um Cluster <br>
 ```ladalloc -n 1 -t 10 -s/e```
 
-- Compilar <br>
+- Compilar e executar <br>
 ``` gcc -fopenmp aes_encrypt_ctr.c /home/cp03/tiny-AES-c/aes.c -o aes_encrypt_ctr -I/home/cp03/tiny-AES-c && echo '' && ./aes_encrypt_ctr <mode> <threads> ```
 
 - Gerar um arquivo de tamanho (bs * count) na memoria: <br>
