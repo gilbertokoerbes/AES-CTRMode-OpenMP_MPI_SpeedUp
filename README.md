@@ -14,3 +14,11 @@ Comandos uteis para serem utilizados dentro do Cluster
 - Verificar o arquivo: <br>
 ``` hexdump -C /dev/shm/large_file.dat ```
 
+- Compilar no MPi e executar
+```ladcomp -env mpicc aes_encrypt_ctr_mpi_openmp.c /home/cp03/tiny-AES-c/aes.c -o aes_encrypt_ctr -I/home/cp03/tiny-AES-c ; ladrun -np 2 ./aes_encrypt_ctr```
+
+- Compilar no MPi com OpemMP e executar
+```ladcomp -env  mpiompcc  aes_encrypt_ctr_mpi_openmp.c /home/cp03/tiny-AES-c/aes.c -o aes_encrypt_ctr -I/home/cp03/tiny-AES-c```
+Executar
+
+ ```ladrun -np 2 ./aes_encrypt_ctr dynamic 2```
