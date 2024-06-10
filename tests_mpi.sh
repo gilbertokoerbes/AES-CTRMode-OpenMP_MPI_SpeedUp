@@ -21,7 +21,7 @@ echo "np "$np
         do 
 
         sed -i "s/\(#define MESSAGE_BLOCKS \)[0-9]\+/\1$b/" aes_encrypt_ctr_mpi_openmp.c
-        ladcomp -env  mpiompcc  aes_encrypt_ctr_mpi_openmp.c /home/cp03/tiny-AES-c/aes.c -o aes_encrypt_ctr -I/home/cp03/tiny-AES-c
+        ladcomp -env  mpiompcc  aes_encrypt_ctr_mpi.c /home/cp03/tiny-AES-c/aes.c -o aes_encrypt_ctr -I/home/cp03/tiny-AES-c
         ladrun -np  $np  ./aes_encrypt_ctr $N
 
         ((reply++))
