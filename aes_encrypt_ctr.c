@@ -65,7 +65,7 @@ int main(int argc, char* argv[]){
     int num_blocks;
 
     fptr_output = fopen("/dev/shm/output_encrypt.txt", "w");
-    fptr_executions = fopen("./output_results.txt", "a");
+    fptr_executions = fopen("./output_results_openmp.txt", "a");
 
     // Abre o arquivo para leitura
     arquivo = fopen("/dev/shm/large_file.dat", "rb");

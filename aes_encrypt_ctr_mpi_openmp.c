@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <omp.h>
 #include <time.h>
 #include "mpi.h"
@@ -14,7 +15,7 @@
 
 #define AES128 1
 #define AES_BLOCK_SIZE 16
-#define MESSAGE_BLOCKS 4 //Blocos por mensagem
+#define MESSAGE_BLOCKS 4 // Blocos por mensagem
 #define ECB 1
 #define CBC 1
 #define CTR 1
@@ -23,12 +24,12 @@
 #define TAG_MASTER_SEND_WORK 3
 #define TAG_SLAVE_RESP_FINAL_WORK 4
 #define TAG_FINALIZE 6
-#define DEBUG 1
+#define DEBUG 0
 
 typedef struct
 {
     int block_id;
-    char message[AES_BLOCK_SIZE]; // Ponteiro para a string
+    char message[AES_BLOCK_SIZE * MESSAGE_BLOCKS]; // Ponteiro para a string
 } CustomMessage;
 
 // Função para gerar o próximo bloco de CTR
@@ -54,7 +55,6 @@ int main(int argc, char *argv[])
     int message_jumbo_blocks;
     message_jumbo_blocks = 1;
 
-
     MPI_Status status;
 
     // Inicializa o MPI
@@ -77,10 +77,9 @@ int main(int argc, char *argv[])
     // printf("size msg.message %lu\n", sizeof(msg.message));
     // fflush(stdout);
 
-    
     // Definindo o tipo MPI para CustomMessage
     const int nitems = 2;
-    int blocklengths[2] = {1, AES_BLOCK_SIZE};
+    int blocklengths[2] = {1, AES_BLOCK_SIZE * MESSAGE_BLOCKS};
     MPI_Datatype types[2] = {MPI_INT, MPI_CHAR};
     MPI_Datatype MPI_CUSTOM_MESSAGE_TYPE;
     MPI_Aint offsets[2];
@@ -96,14 +95,17 @@ int main(int argc, char *argv[])
         char hostname[1024];
         hostname[1023] = '\0';
         gethostname(hostname, 1023);
-        printf("Hostpedeira Slave %d: %s\n", my_rank, hostname);
+
+        if (DEBUG)
+            printf("Hostpedeira Slave %d: %s\n", my_rank, hostname);
         fflush(stdout);
+
         if (DEBUG)
             printf("Processo Slave %d inicializando\n", my_rank);
         fflush(stdout);
 
         // MPI_Send(&request, 0);    // Solicita trabalho ao master
-        MPI_Send(&msg, 16, MPI_CUSTOM_MESSAGE_TYPE, 0, TAG_INIT_SLAVE, MPI_COMM_WORLD);
+        MPI_Send(&msg, 1, MPI_CUSTOM_MESSAGE_TYPE, 0, TAG_INIT_SLAVE, MPI_COMM_WORLD);
 
         while (1)
         {
@@ -120,13 +122,14 @@ int main(int argc, char *argv[])
 
             if (status.MPI_TAG == TAG_FINALIZE)
             {
+                if (DEBUG)
                 printf("Processo Slave %d BREAK!\n", my_rank);
                 fflush(stdout);
                 break;
             }
 
-            char buffer_in[AES_BLOCK_SIZE];
-            memcpy(buffer_in, msg.message, AES_BLOCK_SIZE);
+            char buffer_in[AES_BLOCK_SIZE * MESSAGE_BLOCKS];
+            memcpy(buffer_in, msg.message, AES_BLOCK_SIZE * MESSAGE_BLOCKS);
 
             int i = 0; //<<<<<<<<<<<<<
 
@@ -134,7 +137,7 @@ int main(int argc, char *argv[])
             uint8_t key[] = {0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c};
             uint8_t nonce[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
 
-            unsigned char counter_block[AES_BLOCK_SIZE];
+            unsigned char counter_block[AES_BLOCK_SIZE * MESSAGE_BLOCKS];
             // generate_ctr_block(nonce, i, counter_block);
             generate_ctr_block(nonce, i, counter_block);
 
@@ -174,14 +177,14 @@ int main(int argc, char *argv[])
                 fflush(stdout);
             }
 
-            unsigned char encrypted_output[AES_BLOCK_SIZE];
+            unsigned char encrypted_output[AES_BLOCK_SIZE * MESSAGE_BLOCKS];
 
             // XOR entre o bloco criptografado do contador e o bloco de entrada
 
-            for (int j = 0; j < AES_BLOCK_SIZE; ++j)
+            for (int j = 0; j < AES_BLOCK_SIZE * MESSAGE_BLOCKS; ++j)
             {
                 // encrypted_output[i * AES_BLOCK_SIZE + j] = encrypted_counter_block[j] ^ in[i * AES_BLOCK_SIZE + j];
-                encrypted_output[AES_BLOCK_SIZE + j] = counter_block[j] ^ buffer_in[j];
+                encrypted_output[j] = counter_block[j] ^ buffer_in[j];
             }
             // fprintf(fptr_output, encrypted_output);
             fflush(stdout);
@@ -191,7 +194,7 @@ int main(int argc, char *argv[])
                 printf("\n block cifrado\n");
                 fflush(stdout);
 
-                for (int i = 0; i < AES_BLOCK_SIZE; i++)
+                for (int i = 0; i < AES_BLOCK_SIZE * MESSAGE_BLOCKS; i++)
                     printf("%02X", encrypted_output[i]);
                 fflush(stdout);
 
@@ -205,7 +208,7 @@ int main(int argc, char *argv[])
                 printf("Processo Slave %d respondendo trabalho\n", my_rank);
             fflush(stdout);
 
-            memcpy(msg.message, encrypted_output, AES_BLOCK_SIZE);
+            memcpy(msg.message, encrypted_output, AES_BLOCK_SIZE * MESSAGE_BLOCKS);
 
             // MPI_Send(&msg, 0);    // retorno resultado para o mestre
             MPI_Send(&msg, 16, MPI_CUSTOM_MESSAGE_TYPE, 0, 0, MPI_COMM_WORLD);
@@ -234,24 +237,25 @@ int main(int argc, char *argv[])
         /////////////////////////////////////////////////////////////////
         /////////////////////////////////////////////////////////////////
         /////////////////////////////////////////////////////////////////
-        double t1,t2,tf;
-        t1 = MPI_Wtime(); 
+        double t1, t2, tf;
+        t1 = MPI_Wtime();
 
         char hostname[1024];
         hostname[1023] = '\0';
         gethostname(hostname, 1023);
-        printf("Hostpedeira Master: %s\n", hostname);
+        if (DEBUG)
+            printf("Hostpedeira Master: %s\n", hostname);
         FILE *arquivo;
         FILE *fptr_output;
         FILE *fptr_executions;
 
-        char buffer_in[AES_BLOCK_SIZE]; // blocos lidos conforme tamanho do bloco AES
+        char buffer_in[AES_BLOCK_SIZE * MESSAGE_BLOCKS]; // blocos lidos conforme tamanho do bloco AES
         size_t blocos_lidos;
         long tamanho_arquivo;
         int num_blocks;
 
         fptr_output = fopen("/dev/shm/output_encrypt.txt", "w");
-        fptr_executions = fopen("./output_results.txt", "a");
+
 
         // Abre o arquivo para leitura
         arquivo = fopen("/dev/shm/large_file.dat", "rb");
@@ -326,12 +330,13 @@ int main(int argc, char *argv[])
         while (1)
         {
 
-            if (blk_pointer >= num_blocks)
+            if (blk_pointer >= num_blocks-MESSAGE_BLOCKS)
             {
                 // SHUTDOWN...
                 for (int i = 1; i < proc_n; i++)
                 {
-                    printf("Shutdown proc_n: %d \n", i);
+                    if (DEBUG)
+                        printf("Shutdown proc_n: %d \n", i);
                     fflush(stdout);
                     MPI_Send(&msg, 16, MPI_CUSTOM_MESSAGE_TYPE, i, TAG_FINALIZE, MPI_COMM_WORLD);
                 }
@@ -353,7 +358,7 @@ int main(int argc, char *argv[])
             {
 
                 // fread(buffer_in, 1, AES_BLOCK_SIZE, arquivo); lemos todo arquivo em buffer_input
-                memcpy(buffer_in, buffer_input_file + blk_pointer, AES_BLOCK_SIZE);
+                memcpy(buffer_in, buffer_input_file + blk_pointer, AES_BLOCK_SIZE * MESSAGE_BLOCKS);
 
                 if (DEBUG)
                 {
@@ -365,11 +370,9 @@ int main(int argc, char *argv[])
                         printf("%02hhX", buffer_in[i]);
                     fflush(stdout);
                 }
-                printf("recv_tag\n");
-                memcpy(msg.message, buffer_in, AES_BLOCK_SIZE);
+                memcpy(msg.message, buffer_in, AES_BLOCK_SIZE * MESSAGE_BLOCKS);
                 msg.block_id = blk_pointer;
 
-                printf("recv_tag");
                 fflush(stdout);
 
                 // MPI_Send(&msg, status.MPI_SOURCE);
@@ -386,10 +389,11 @@ int main(int argc, char *argv[])
                     printf("Mestre recebeu trabalho processado %d\n", status.MPI_SOURCE);
                 fflush(stdout);
 
-                memcpy(buffer_in, msg.message, AES_BLOCK_SIZE);
+                memcpy(buffer_in, msg.message, AES_BLOCK_SIZE * MESSAGE_BLOCKS);
 
                 int blk_id = msg.block_id;
-                for (int j = 0; j < AES_BLOCK_SIZE; ++j)
+
+                for (int j = 0; j < AES_BLOCK_SIZE * MESSAGE_BLOCKS; ++j)
                 {
                     // buffer_encrypted_output[i * AES_BLOCK_SIZE + j] = encrypted_counter_block[j] ^ in[i * AES_BLOCK_SIZE + j];
                     buffer_encrypted_output[blk_id * AES_BLOCK_SIZE + j] = buffer_in[j];
@@ -400,19 +404,18 @@ int main(int argc, char *argv[])
             blk_pointer++;
         }
         t2 = MPI_Wtime(); // termina a contagem do tempo
-        tf = t2-t1;
-        printf("\nTempo de execucao: %f\n\n", tf); 
-        // // Obter o tempo final
-        // clock_gettime(CLOCK_MONOTONIC, &end);
-        // // Calcular o tempo decorrido
-        // time_spent = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-
-        // for(int i =0; i<sizeof(buffer_encrypted_output); i++)
-        //fwrite(buffer_encrypted_output, sizeof(unsigned char), AES_BLOCK_SIZE, fptr_output);
-
+        tf = t2 - t1;
+        
+        if (DEBUG)
+        printf("\nTempo de execucao: %f\n\n", tf);
+        
         fwrite(buffer_encrypted_output, AES_BLOCK_SIZE, AES_BLOCK_SIZE * num_blocks, fptr_output);
+        
+        fptr_executions = fopen("./output_results.txt", "a");
+        char *Nodos = argv[1];
+        fprintf(fptr_executions, "%d;%f,%d,%d,%s\n", num_blocks, tf, MESSAGE_BLOCKS, proc_n, Nodos);
+        int fclose (FILE *fptr_executions);
 
-        fprintf(fptr_executions, "%d;%f\n", num_blocks, tf);
         fflush(stdout);
 
         fflush(stdout);
